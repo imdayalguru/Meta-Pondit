@@ -1,4 +1,7 @@
 
+
+export const BATCH_SIZE = 5;
+
 export const ADOBE_CATEGORY_MAP: Record<number, string> = {
     1: "Animals", 2: "Buildings and Architecture", 3: "Business", 4: "Drinks",
     5: "The Environment", 6: "States of Mind", 7: "Food", 8: "Graphic Resources",
@@ -72,6 +75,3 @@ export const KEYWORD_STOPWORDS = new Set([
 
 export const KEYWORD_MAX = 49;
 export const KEYWORD_MIN_STRONG = 25;
-
-export const TITLE_TRUNC = 50;
-export const KEYWORDS_TRUNC = 60;

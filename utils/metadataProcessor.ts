@@ -80,14 +80,15 @@ const sentenceCase = (s: string): string => {
     return str.charAt(0).toUpperCase() + str.slice(1);
 };
 
-const refineTitleKeywords = (title: string, keywords: string, description: string, categoryCode: number): { refinedTitle: string; refinedKeywords: string } => {
+const refineTitleKeywords = (title: string, keywords: string, description: string, categoryCode: number): { refinedTitle: string; refinedKeywords: string[] } => {
     let t = cleanPhrase(title);
     t = t.replace(/\b(stock photo|stock image|copy space|high quality|hd|4k)\b/gi, '');
     t = sentenceCase(t.replace(/\s{2,}/g, ' ').trim().substring(0, 200).toLowerCase());
 
     const rawParts = (keywords || '').split(/[,\n;]+/);
     const seen = new Set<string>();
-    const filtered = rawParts
+
+    const strongKeywords: string[] = rawParts
         .map(p => cleanPhrase(p.toLowerCase()))
         .filter(p => {
             if (p.length <= 1 || KEYWORD_STOPWORDS.has(p) || seen.has(p)) return false;
@@ -96,9 +97,12 @@ const refineTitleKeywords = (title: string, keywords: string, description: strin
         });
 
     const tdTokens = `${title} ${description}`.toLowerCase().split(/[^a-zA-Z0-9+]+/).filter(w => w.length > 2);
-    const tdPhrases = new Set(filtered);
+    const potentialMedium = new Set<string>();
     tdTokens.forEach(w => {
-        if (!KEYWORD_STOPWORDS.has(w) && !seen.has(w)) tdPhrases.add(w);
+        if (!KEYWORD_STOPWORDS.has(w) && !seen.has(w)) {
+            potentialMedium.add(w);
+            seen.add(w);
+        }
     });
 
     let catTerms: string[] = [];
@@ -109,35 +113,46 @@ const refineTitleKeywords = (title: string, keywords: string, description: strin
     else if (categoryCode === 7) catTerms = ["food"];
 
     catTerms.forEach(term => {
-        if (!KEYWORD_STOPWORDS.has(term) && !seen.has(term)) tdPhrases.add(term);
+        if (!KEYWORD_STOPWORDS.has(term) && !seen.has(term)) {
+            potentialMedium.add(term);
+            seen.add(term);
+        }
     });
     
-    const prioritized = [...filtered, ...Array.from(tdPhrases).filter(p => !filtered.includes(p))];
+    const mediumKeywords: string[] = Array.from(potentialMedium);
 
-    let curated = prioritized.filter(p => {
-        if (!p) return false;
-        if (["stock photo", "copy space", "no people", "nobody", "text placeholder"].some(bad => p.includes(bad))) return false;
-        return p.split(' ').length <= 3;
+    let prioritized: string[] = [...strongKeywords, ...mediumKeywords];
+
+    let curated = prioritized.filter(k => {
+        if (!k) return false;
+        if (["stock photo", "copy space", "no people", "nobody", "text placeholder"].some(bad => k.includes(bad))) return false;
+        return k.split(' ').length <= 3;
     });
 
     curated = curated.slice(0, KEYWORD_MAX);
 
     if (curated.length < KEYWORD_MIN_STRONG) {
         const extras: string[] = [];
-        for (const p of curated) {
-            if (p.endsWith('s')) {
-                const base = p.slice(0, -1);
-                if (base.length > 2 && !curated.includes(base) && !extras.includes(base)) extras.push(base);
+        const currentValues = new Set(curated);
+
+        for (const k of curated) {
+            if (k.endsWith('s')) {
+                const base = k.slice(0, -1);
+                if (base.length > 2 && !currentValues.has(base) && !extras.includes(base)) {
+                    extras.push(base);
+                }
             } else {
-                const plural = p + 's';
-                if (plural.length > 2 && !curated.includes(plural) && !extras.includes(plural)) extras.push(plural);
+                const plural = k + 's';
+                if (plural.length > 2 && !currentValues.has(plural) && !extras.includes(plural)) {
+                    extras.push(plural);
+                }
             }
             if (curated.length + extras.length >= KEYWORD_MIN_STRONG) break;
         }
         curated.push(...extras.slice(0, Math.max(0, KEYWORD_MIN_STRONG - curated.length)));
     }
 
-    return { refinedTitle: t, refinedKeywords: curated.join(', ') };
+    return { refinedTitle: t, refinedKeywords: curated };
 };
 
 
