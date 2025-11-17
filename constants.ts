@@ -70,8 +70,21 @@ export const KEYWORD_STOPWORDS = new Set([
     "the", "a", "an", "and", "or", "of", "on", "in", "for", "to", "with", "by", "at", "from", "as", "is", "are", "be",
     "no", "not", "without", "copy", "space", "stock", "photo", "image", "illustration", "vector illustration", "nobody",
     "background", "closeup", "close up", "studio shot", "horizontal", "vertical", "portrait orientation", "landscape orientation",
-    "high quality", "hd", "4k", "free", "royalty free", "text", "placeholder"
+    "high quality", "hd", "4k", "free", "royalty free", "text", "placeholder",
+    "art", "artistic", "artwork", "beautiful", "pretty", "lovely", "amazing", "great", "nice",
+    "colorful", "design", "graphic", "element", "abstract", "creative"
 ]);
 
 export const KEYWORD_MAX = 49;
 export const KEYWORD_MIN_STRONG = 25;
+
+export const IRREGULAR_PLURALS: Record<string, string> = {
+    'person': 'people', 'child': 'children', 'man': 'men', 'woman': 'women',
+    'tooth': 'teeth', 'foot': 'feet', 'leaf': 'leaves', 'mouse': 'mice',
+    'goose': 'geese', 'ox': 'oxen', 'cactus': 'cacti', 'focus': 'foci',
+    'fungus': 'fungi', 'nucleus': 'nuclei', 'syllabus': 'syllabi',
+    'analysis': 'analyses', 'diagnosis': 'diagnoses', 'oasis': 'oases',
+    'thesis': 'theses', 'crisis': 'crises', 'phenomenon': 'phenomena',
+    'criterion': 'criteria', 'datum': 'data', 'wolf': 'wolves', 'knife': 'knives',
+    'life': 'lives', 'calf': 'calves'
+};

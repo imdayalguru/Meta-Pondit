@@ -1,9 +1,41 @@
-
 import { 
     ADOBE_CATEGORY_MAP, ADOBE_NAME_TO_CODE, ADOBE_ALIASES, ADOBE_CATEGORY_RULES,
-    PEOPLE_BIAS_TERMS, GRAPHICS_BIAS_TERMS, KEYWORD_STOPWORDS, KEYWORD_MAX, KEYWORD_MIN_STRONG
+    PEOPLE_BIAS_TERMS, GRAPHICS_BIAS_TERMS, KEYWORD_STOPWORDS, KEYWORD_MAX, KEYWORD_MIN_STRONG, IRREGULAR_PLURALS
 } from '../constants';
 import { MetadataResult } from '../types';
+
+const INVERSE_IRREGULAR_PLURALS: Record<string, string> = Object.fromEntries(
+    Object.entries(IRREGULAR_PLURALS).map(([singular, plural]) => [plural, singular])
+);
+
+const VALID_SHORT_KEYWORDS = new Set(['ai', 'ui', '3d']);
+
+const COMMON_MISTAKES_MAP: Record<string, string> = {
+    'skie': 'skiing', 'skiin': 'skiing', 'spor': 'sport', 'ru': 'run', 'mountai': 'mountain',
+    'tre': 'tree', 'sno': 'snow', 'slop': 'slope', 'landscap': 'landscape', 'vecto': 'vector',
+    'silhouett': 'silhouette', 'ico': 'icon', 'graphi': 'graphic', 'elemen': 'element',
+    'adventur': 'adventure', 'recreatio': 'recreation', 'natur': 'nature', 'activitie': 'activity',
+    'holida': 'holiday', 'vacatio': 'vacation', 'trave': 'travel', 'illustratio': 'illustration',
+    'desig': 'design', 'technolog': 'technology', 'busines': 'business', 'peopl': 'people',
+    'pea': 'peak', 'whit': 'white', 'monochrom': 'monochrome', 'minimalis': 'minimalist',
+    'stylize': 'stylized', 'black and whit': 'black and white',
+    // Volcano example additions
+    'volcan': 'volcano', 'eruptio': 'eruption', 'smok': 'smoke', 'lav': 'lava', 'geolog': 'geology',
+    'geographi': 'geography', 'symbo': 'symbol', 'islan': 'island', 'badg': 'badge', 'emble': 'emblem',
+    'disaste': 'disaster', 'hazar': 'hazard', 'dange': 'danger', 'exoti': 'exotic', 'touris': 'tourism',
+    'environmen': 'environment', 'summe': 'summer', 'paradis': 'paradise', 'aler': 'alert',
+    'warnin': 'warning', 'scienc': 'science', 'extrem': 'extreme', 'line ar': 'line art',
+    'isolate': 'isolated',
+    // Earth example additions
+    'characte': 'character', 'masco': 'mascot', 'eart': 'earth', 'plane': 'planet', 'welcomin': 'welcoming',
+    'celebratin': 'celebrating', 'wavin': 'waving', 'fac': 'face', 'smil': 'smile', 'backgroun': 'background',
+    'landmas': 'landmass', 'ma': 'map', 'styl': 'style', 'comi': 'comic', 'outlin': 'outline',
+    'communicatio': 'communication', 'internationa': 'international', 'unit': 'unity', 'protectio': 'protection',
+    'da': 'day', 'sustainabilit': 'sustainability', 'friendl': 'friendly', 'messag': 'message',
+    'greetin': 'greeting', 'welcom': 'welcome', 'happines': 'happiness', 'celebratio': 'celebration',
+    'succes': 'success', 'victor': 'victory', 'educatio': 'education', 'log': 'logo', 'communit': 'community',
+    'peac': 'peace', 'futur': 'future'
+};
 
 const normalizeCategoryName = (name: string): string => (name || "").trim().toLowerCase();
 
@@ -82,16 +114,38 @@ const sentenceCase = (s: string): string => {
 
 const refineTitleKeywords = (title: string, keywords: string, description: string, categoryCode: number): { refinedTitle: string; refinedKeywords: string[] } => {
     let t = cleanPhrase(title);
-    t = t.replace(/\b(stock photo|stock image|copy space|high quality|hd|4k)\b/gi, '');
+    // Expanded forbidden words list for cleaning, acting as a safety net.
+    const forbiddenTitleWords = /\b(stock photo|stock image|copy space|high quality|hd|4k|nobody|no people|promo|sale|free|text|placeholder)\b/gi;
+    t = t.replace(forbiddenTitleWords, '');
     t = sentenceCase(t.replace(/\s{2,}/g, ' ').trim().substring(0, 200).toLowerCase());
 
     const rawParts = (keywords || '').split(/[,\n;]+/);
     const seen = new Set<string>();
 
     const strongKeywords: string[] = rawParts
-        .map(p => cleanPhrase(p.toLowerCase()))
+        .map(part => {
+            let p = cleanPhrase(part.toLowerCase());
+            if (!p) return '';
+            
+            // Correct full phrase first
+            if (COMMON_MISTAKES_MAP[p]) {
+                 p = COMMON_MISTAKES_MAP[p];
+            }
+
+            // Correct parts of multi-word phrases
+            const words = p.split(' ');
+            if (words.length > 1) {
+                p = words.map(w => COMMON_MISTAKES_MAP[w] || w).join(' ');
+            } else if (COMMON_MISTAKES_MAP[p]) { // Correct single words
+                 p = COMMON_MISTAKES_MAP[p];
+            }
+            
+            return p;
+        })
         .filter(p => {
-            if (p.length <= 1 || KEYWORD_STOPWORDS.has(p) || seen.has(p)) return false;
+            if (!p || (p.length < 3 && !VALID_SHORT_KEYWORDS.has(p)) || KEYWORD_STOPWORDS.has(p) || seen.has(p)) {
+                return false;
+            }
             seen.add(p);
             return true;
         });
@@ -129,30 +183,45 @@ const refineTitleKeywords = (title: string, keywords: string, description: strin
         return k.split(' ').length <= 3;
     });
 
-    curated = curated.slice(0, KEYWORD_MAX);
+    curated = [...new Set(curated)].slice(0, KEYWORD_MAX);
 
     if (curated.length < KEYWORD_MIN_STRONG) {
-        const extras: string[] = [];
+        const extras = new Set<string>();
         const currentValues = new Set(curated);
 
-        for (const k of curated) {
-            if (k.endsWith('s')) {
-                const base = k.slice(0, -1);
-                if (base.length > 2 && !currentValues.has(base) && !extras.includes(base)) {
-                    extras.push(base);
-                }
-            } else {
-                const plural = k + 's';
-                if (plural.length > 2 && !currentValues.has(plural) && !extras.includes(plural)) {
-                    extras.push(plural);
-                }
+        const addExtra = (term: string) => {
+            if (term && term.length > 2 && !currentValues.has(term)) {
+                extras.add(term);
             }
-            if (curated.length + extras.length >= KEYWORD_MIN_STRONG) break;
+        };
+
+        for (const k of curated) {
+            if (curated.length + extras.size >= KEYWORD_MIN_STRONG) break;
+
+            // Try to find the pair (singular or plural)
+            const irregularPlural = IRREGULAR_PLURALS[k];
+            if (irregularPlural) {
+                addExtra(irregularPlural);
+                continue; // Found a pair, move on
+            }
+
+            const irregularSingular = INVERSE_IRREGULAR_PLURALS[k];
+            if (irregularSingular) {
+                addExtra(irregularSingular);
+                continue; // Found a pair, move on
+            }
+            
+            // If no irregular pair, use simple rule
+            if (k.endsWith('s')) {
+                addExtra(k.slice(0, -1));
+            } else {
+                addExtra(k + 's');
+            }
         }
-        curated.push(...extras.slice(0, Math.max(0, KEYWORD_MIN_STRONG - curated.length)));
+        curated.push(...Array.from(extras).slice(0, Math.max(0, KEYWORD_MIN_STRONG - curated.length)));
     }
 
-    return { refinedTitle: t, refinedKeywords: curated };
+    return { refinedTitle: t, refinedKeywords: [...new Set(curated)] };
 };
 
 
